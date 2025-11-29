@@ -90,7 +90,7 @@ class LLaVA:
         if len(tokens) != len([singularize(w) for w in tokens]):
             print("warning, the token number unmatched")
         
-       
+        
         hidden_states = torch.stack(output.hidden_states[0])
         question_hidden_states = hidden_states[:, 0, -1, :] 
     
