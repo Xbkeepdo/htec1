@@ -11,6 +11,7 @@ warnings.filterwarnings("ignore")
 from sklearn.metrics import roc_auc_score, average_precision_score
 import numpy as np
 from PIL import Image
+from util.chair import CHAIR
 
 LVLM_MAP = {
     'llava-1.5-13b-hf': LLaVA,
@@ -26,7 +27,7 @@ def parse_args():
     parser.add_argument('--sampling_time', type=int, default=5)
     parser.add_argument('--max_tokens', type=int, default=512)
     parser.add_argument('--generate', type=bool, default=True)
-    parser.add_argument('--num_data', type=int, default=5000)
+    parser.add_argument('--num_data', type=int, default=500)
     parser.add_argument('--image_layer', type=int, default=32)
     parser.add_argument('--text_layer', type=int, default=31)
     parser.add_argument('--k', type=int, default=32)
@@ -69,14 +70,30 @@ def main():
     args = parse_args()
     lvlm = obtain_lvlm(args)
     if args.dataset == "MSCOCO":
-        MSCOCO_VAL_DIR = "MSCOCO_DATASET_PATH"
-        COCO_ANNOTATION_PATH = "COCO_ANNOTATION_PATH"
+        MSCOCO_VAL_DIR = "/home/apulis-dev/userdata/val2014"
+        COCO_ANNOTATION_PATH = "/home/apulis-dev/userdata/annotations/captions_val2014.json"
           
     QUESTION = "Describe the given image in detail."
     
-    # Load COCO annotations
+    # # Load COCO annotations
+    # with open(COCO_ANNOTATION_PATH, "r") as f:
+    #     coco_data = [json.loads(line) for line in f]
+
+    # Load COCO annotations (适配标准 COCO 格式)
     with open(COCO_ANNOTATION_PATH, "r") as f:
-        coco_data = [json.loads(line) for line in f]
+        content = json.load(f)  # 加载整个 JSON
+        
+        coco_data = []
+        # 标准 COCO 格式中，图片信息存储在 'images' 键下
+        if 'images' in content:
+            for img in content['images']:
+                coco_data.append({
+                    "image": img['file_name'],  # 把 file_name 映射为代码需要的 image
+                    "image_id": img['id']
+                })
+        else:
+            # 防御性代码：万一你是另一种格式（列表格式）
+            coco_data = content
     
     coco_gt = random.sample(coco_data, args.num_data)
     
@@ -136,14 +153,23 @@ def main():
                     'aupr': aupr,
                        }
                 
-        compute_layerwise_metrics(
-                           args.w * global_cos_matrix_true_layer_stacked + (1 - args.w) *  top_k_cos_matrix_true_layer_stacked,
-                           args.w * global_cos_matrix_false_layer_stacked + (1 - args.w) *  top_k_cos_matrix_false_layer_stacked,
-                           args
-                        )
-         
-   
+        metrics = compute_layerwise_metrics(
+            args.w * global_cos_matrix_true_layer_stacked + (1 - args.w) * top_k_cos_matrix_true_layer_stacked,
+            args.w * global_cos_matrix_false_layer_stacked + (1 - args.w) * top_k_cos_matrix_false_layer_stacked,
+            args,
+        )
 
-        
+        # 评估结果：终端打印
+        print("\n========== Evaluation Results ==========")
+        print(f"  AUROC: {metrics['auroc']:.4f}")
+        print(f"  AUPR:  {metrics['aupr']:.4f}")
+        print("========================================\n")
+
+        # 可选：保存到 JSON（便于记录/复现）
+        results_path = "evaluation_results.json"
+        with open(results_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"Results saved to {results_path}")
+
 if __name__ == "__main__":
     main()

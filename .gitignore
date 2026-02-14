@@ -1,0 +1,14 @@
+chair.pkl
+*.pyc
+__pycache__/
+.env
+*.egg-info/
+.idea/
+
+chair.pkl
+*.pyc
+__pycache__/
+.env
+*.egg-info/
+.idea/
+

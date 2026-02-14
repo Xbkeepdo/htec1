@@ -10,6 +10,8 @@ import nltk
 import pickle
 from pattern.en import singularize
 
+from modelscope import snapshot_download
+
 
 DEFAULT_IMAGE_TOKEN = "<image>"
 DEFAULT_IM_START_TOKEN = "<im_start>"
@@ -22,21 +24,40 @@ class LLaVA:
         self.build_model()
 
     def build_model(self):
-        model_name = f"llava-hf/{self.version}"
+        # model_name = f"llava-hf/{self.version}"
+        # self.model = LlavaForConditionalGeneration.from_pretrained(
+        #     model_name,
+        #     torch_dtype=torch.float16,
+        #     low_cpu_mem_usage=True,
+        #     output_attentions=True,
+        #     output_hidden_states=True,
+        #     attn_implementation="eager",
+        # ).to(0)
+        
+        # self.processor = AutoProcessor.from_pretrained(model_name)
+
+        model_dir = snapshot_download(
+            'llava-hf/llava-1.5-7b-hf',      # 就用你这行的模型 ID
+            cache_dir='/home/apulis-dev/models/llava',  # 任选你有权限的目录
+        )
+
+        # 2) 从本地目录加载模型和 processor
         self.model = LlavaForConditionalGeneration.from_pretrained(
-            model_name,
+            model_dir,
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
             output_attentions=True,
             output_hidden_states=True,
             attn_implementation="eager",
         ).to(0)
-        
-        self.processor = AutoProcessor.from_pretrained(model_name)
+
+        self.processor = AutoProcessor.from_pretrained(model_dir)
+
         self.image_token_id = self.processor.tokenizer.convert_tokens_to_ids(DEFAULT_IMAGE_TOKEN)
         self.im_start_token_id = self.processor.tokenizer.convert_tokens_to_ids(DEFAULT_IM_START_TOKEN)
         self.im_end_token_id = self.processor.tokenizer.convert_tokens_to_ids(DEFAULT_IM_END_TOKEN)
-        CACHE_PATH = "CHAIR_CACHE_PATH"
+        # Load precomputed CHAIR evaluator cache from project root.
+        CACHE_PATH = "chair.pkl"
         self.evaluator = pickle.load(open(CACHE_PATH, 'rb'))
 
     def generate(self, image, question, img_id, args):
@@ -96,7 +117,11 @@ class LLaVA:
     
         
         with torch.inference_mode():
-            curr_layer_logits = self.model.language_model.lm_head(hidden_states).cpu().float()
+            # 新版本 transformers 中 lm_head 可能在顶层，用 get_output_embeddings() 兼容
+            lm_head = self.model.get_output_embeddings()
+            if lm_head is None:
+                lm_head = self.model.language_model.lm_head
+            curr_layer_logits = lm_head(hidden_states).cpu().float()
             logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
             softmax_probs_raw = torch.nn.functional.softmax(logit_scores, dim=-1)
             
