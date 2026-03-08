@@ -12,6 +12,15 @@ from pattern.en import singularize
 
 from modelscope import snapshot_download
 
+import os
+
+# Force NLTK to use project-local data (nltk_data/ in repo root) so that
+# broken user-level punkt configurations (e.g. zipped paths) are ignored.
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_LOCAL_NLTK_DATA = os.path.join(_PROJECT_ROOT, "nltk_data")
+if os.path.isdir(_LOCAL_NLTK_DATA):
+    nltk.data.path = [_LOCAL_NLTK_DATA]
+
 
 DEFAULT_IMAGE_TOKEN = "<image>"
 DEFAULT_IM_START_TOKEN = "<im_start>"
@@ -19,8 +28,10 @@ DEFAULT_IM_END_TOKEN = "<im_end>"
 
 class LLaVA:
 
-    def __init__(self, version):
+    def __init__(self, version, model_dir=None, device: int = 0):
         self.version = version
+        self.model_dir = model_dir
+        self.device = device
         self.build_model()
 
     def build_model(self):
@@ -36,10 +47,13 @@ class LLaVA:
         
         # self.processor = AutoProcessor.from_pretrained(model_name)
 
-        model_dir = snapshot_download(
-            'llava-hf/llava-1.5-7b-hf',      # 就用你这行的模型 ID
-            cache_dir='/home/apulis-dev/models/llava',  # 任选你有权限的目录
-        )
+        model_dir = self.model_dir
+        if model_dir is None or not os.path.isdir(model_dir):
+            model_dir = snapshot_download(
+                'llava-hf/llava-1.5-7b-hf',      # 就用你这行的模型 ID
+                cache_dir='/home/apulis-dev/models/llava',  # 任选你有权限的目录
+            )
+        self.model_dir = model_dir
 
         # 2) 从本地目录加载模型和 processor
         self.model = LlavaForConditionalGeneration.from_pretrained(
@@ -49,7 +63,7 @@ class LLaVA:
             output_attentions=True,
             output_hidden_states=True,
             attn_implementation="eager",
-        ).to(0)
+        ).to(self.device)
 
         self.processor = AutoProcessor.from_pretrained(model_dir)
 
@@ -82,7 +96,7 @@ class LLaVA:
                         ]
         
         prompt = self.processor.apply_chat_template(conversation, add_generation_prompt=True)
-        inputs = self.processor(images=image, text=prompt, return_tensors='pt').to(0, torch.float16)
+        inputs = self.processor(images=image, text=prompt, return_tensors='pt').to(self.device, torch.float16)
         
         input_ids = inputs['input_ids'][0] 
         

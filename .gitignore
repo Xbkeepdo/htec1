@@ -4,11 +4,11 @@ __pycache__/
 .env
 *.egg-info/
 .idea/
-
+nltk_data/
 chair.pkl
 *.pyc
 __pycache__/
 .env
 *.egg-info/
 .idea/
-
+nltk_data/
